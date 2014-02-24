@@ -80,19 +80,25 @@ class MuonAnalyzer : public edm::EDAnalyzer {
       virtual void endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&);
 
       virtual void initialize_tree_vars();
+      virtual void fillGen(const edm::Event& iEvent);
+      virtual void fillReco(const edm::Event& iEvent);
+      
+      
       virtual vector<int> is_MC_matched(const edm::Event& iEvent, const Muon * mu);
       virtual bool is_trigger_matched(const edm::Event& iEvent, const TLorentzVector mu);
-      virtual int acceptance(const edm::Event& iEvent);
+      
       virtual bool IsTightMuon(const reco::Muon& muon);
       
       // ----------member data ---------------------------
       string outputname_;
-      Bool_t isMC_;
+      Bool_t doMC_;
+      Bool_t doReco_;
       vector< Int_t> pdgId_;
 
-      Int_t ntrueparticles;
+      Int_t ngen;
       TFile * output_;
       TTree * tree_;
+      TClonesArray * gen_particle_4mom;
       TClonesArray * reco_muon_4mom;
       TClonesArray * reco_dimuon_4mom;
       Int_t nmuons;
@@ -102,6 +108,9 @@ class MuonAnalyzer : public edm::EDAnalyzer {
       Int_t pdgId[100];
       Int_t pdgIdMom[100];
       Int_t pdgIdGrandma[100];
+      
+      Int_t gen_pdgId[100];
+      Int_t gen_status[100];
 
       bool isTightMuon[100];
       bool isTriggerMatched[100];
@@ -125,7 +134,8 @@ MuonAnalyzer::MuonAnalyzer(const edm::ParameterSet& iConfig)
    //now do what ever initialization is needed
 
   outputname_ = iConfig.getParameter<string> ("OutputFileName");
-  isMC_ = iConfig.getParameter<bool> ("IsMC");
+  doMC_ = iConfig.getParameter<bool> ("doMC");
+  doReco_ = iConfig.getParameter<bool> ("doReco");
   pdgId_ = iConfig.getParameter <vector <int> > ("pdgId");
 
   output_ = new TFile (outputname_.c_str(), "RECREATE" );
@@ -133,7 +143,7 @@ MuonAnalyzer::MuonAnalyzer(const edm::ParameterSet& iConfig)
 
   reco_muon_4mom = new TClonesArray("TLorentzVector", 100);
   reco_dimuon_4mom = new TClonesArray("TLorentzVector", 100);
-
+  gen_particle_4mom = new TClonesArray("TLorentzVector", 100);
 }
 
 
@@ -157,23 +167,29 @@ MuonAnalyzer::~MuonAnalyzer()
 void MuonAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
 
   initialize_tree_vars();
+  if (doMC_) fillGen(iEvent);
+  if (doReco_) fillReco(iEvent);
+  ////////////////
+  tree_->Fill();//
+  ////////////////
+}
+
+void MuonAnalyzer::fillReco(const edm::Event& iEvent) {
+	
+  string theMuonLabel = "muons";
   
-	EDGetTokenT<MuonCollection> theMuonLabel;
-	theMuonLabel = consumes<MuonCollection>(InputTag("muons"));
+//	EDGetTokenT<MuonCollection> theMuonLabel;
+//	theMuonLabel = consumes<MuonCollection>(InputTag("muons"));
+	
 	edm::Handle<MuonCollection> muons;
-	iEvent.getByToken(theMuonLabel, muons);
+//	iEvent.getByToken(theMuonLabel, muons);
+	iEvent.getByLabel(theMuonLabel, muons);
   
   if (!muons.isValid()) {
     cout << "theMuonLabel is not valid" << endl;
     return;
   }
-
-  /// check if MC
-  if (isMC_) {
-  	ntrueparticles = acceptance(iEvent);
-  	if (ntrueparticles == 0) return;
-  }
-
+  
   MuonCollection::const_iterator muon_i;
   for (muon_i = muons->begin(); muon_i!=muons->end(); ++muon_i) { // loop over all muons
     if (nmuons >= 100) {
@@ -194,7 +210,7 @@ void MuonAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSet
     charge[nmuons] = (*muon_i).charge();
     isTriggerMatched[nmuons] = is_trigger_matched(iEvent, muon_4mom);
 
-    if (isMC_) {
+    if (doMC_) {
       vector <int> family(3, -1);
       family = is_MC_matched(iEvent, mu);
       pdgId[nmuons] = family[0];
@@ -223,21 +239,18 @@ void MuonAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSet
     	ndimuons++;
     }
   }
-
-  tree_->Fill();
+	
 }
 
-
 vector <int> MuonAnalyzer::is_MC_matched(const edm::Event& iEvent, const Muon * mu) {
-//  string theGenLabel = "genParticles";
-//  Handle< GenParticleCollection > genParticles;
-//  iEvent.getByToken(theGenLabel, genParticles);
+  string theGenLabel = "genParticles";
   
-	EDGetTokenT<GenParticleCollection>  theGenLabel;
-	theGenLabel = consumes<GenParticleCollection>(InputTag("genParticles"));
-//	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT"); //make sure have correct process on MC
+//	EDGetTokenT<GenParticleCollection>  theGenLabel;
+//	theGenLabel = consumes<GenParticleCollection>(InputTag("genParticles"));
+	
 	edm::Handle<GenParticleCollection> genParticles;
-	iEvent.getByToken(theGenLabel, genParticles);
+//	iEvent.getByToken(theGenLabel, genParticles);
+	iEvent.getByLabel(theGenLabel, genParticles);
   
   vector <int> family_tree(3, -1);
   for(size_t i = 0; i < genParticles->size(); ++i) {
@@ -245,7 +258,7 @@ vector <int> MuonAnalyzer::is_MC_matched(const edm::Event& iEvent, const Muon * 
     if (p.status() == 1) {
       TLorentzVector p_4mom(0., 0., 0., 0.);
       TLorentzVector muon_4mom(0., 0., 0., 0.);
-      if (p.pt() < 4. || abs(p.eta()) > 2.4) continue;
+      if (p.pt() < 2.5 || abs(p.eta()) > 2.4) continue;
       p_4mom.SetPtEtaPhiM(p.pt(), p.eta(), p.phi(), p.mass());
       const Track * muon_track = mu->bestTrack();
       muon_4mom.SetPtEtaPhiM(muon_track->pt(), muon_track->eta(), muon_track->phi(), muon_mass);
@@ -273,7 +286,9 @@ void MuonAnalyzer::initialize_tree_vars(){
 
   reco_muon_4mom->Clear();
   reco_dimuon_4mom->Clear();
+  gen_particle_4mom->Clear();
 
+  ngen = 0;
   nmuons = 0;
   ndimuons = 0;
 }
@@ -288,8 +303,12 @@ void MuonAnalyzer::beginJob() {
   tree_->Branch("ndimuons",                  &ndimuons,      "ndimuons/I");
   tree_->Branch("reco_dimuon_charge",        dicharge,        "charge[ndimuons]/I");
 
-  if (isMC_) {
-  	tree_->Branch("ntrueparticles",          &ntrueparticles,       "ntrueparticles/I");
+  if (doMC_) {
+  	tree_->Branch("ngen",          &ngen,  "ngen/I");
+  	tree_->Branch("gen_particle_4mom",       "TClonesArray",   &gen_particle_4mom, 32000, 0);
+  	tree_->Branch("gen_particle_pdgId",      gen_pdgId,        "pdgId[ngen]/I");
+  	tree_->Branch("gen_particle_status",     gen_status,       "gen_status[ngen]/I");
+ 
   	tree_->Branch("reco_muon_pdgId",         pdgId,         "pdgId[nmuons]/I");
   	tree_->Branch("reco_muon_pdgId_mother",  pdgIdMom,      "pdgIdMom[nmuons]/I");
   	tree_->Branch("reco_muon_pdgId_grandma", pdgIdGrandma,  "pdgIdGrandma[nmuons]/I");
@@ -303,29 +322,32 @@ void MuonAnalyzer::beginJob() {
 
 }
 
-int MuonAnalyzer::acceptance(const edm::Event& iEvent) {
-//  string theGenLabel = "genParticles";
-//  Handle< GenParticleCollection > genParticles;
-//  iEvent.getByToken(theGenLabel, genParticles);
+void MuonAnalyzer::fillGen(const edm::Event& iEvent) {
+  string theGenLabel = "genParticles";
+  Handle< GenParticleCollection > genParticles;
   
-	EDGetTokenT<GenParticleCollection>  theGenLabel;
-	theGenLabel = consumes<GenParticleCollection>(InputTag("genParticles"));
+//	EDGetTokenT<GenParticleCollection>  theGenLabel;
+//	theGenLabel = consumes<GenParticleCollection>(InputTag("genParticles"));
 //	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT"); //make sure have correct process on MC
-	edm::Handle<GenParticleCollection> genParticles;
-	iEvent.getByToken(theGenLabel, genParticles);
+	
+  //	iEvent.getByToken(theGenLabel, genParticles);
+	iEvent.getByLabel(theGenLabel, genParticles);
   
-  int verdect = 0;
   for (vector<int>::iterator it = pdgId_.begin(); it != pdgId_.end(); ++it) {
     int pdgId_i = *it;
     for(size_t i = 0; i < genParticles->size(); ++i) {
       const GenParticle & p = (*genParticles)[i];
-      if (p.status() == 1 && p.pt() > 4. && abs(p.eta()) < 2.4 && abs(p.pdgId()) == pdgId_i) {
-        verdect++;
-        break;
+//      cout << p.pdgId()  << "  " << p.status() << endl;
+      if (abs(p.pdgId()) == pdgId_i) {
+      	gen_status[ngen] = p.status();
+      	gen_pdgId[ngen] = p.pdgId();
+      	TLorentzVector moment(0., 0., 0., 0.);
+      	moment.SetPtEtaPhiM(p.pt(), p.eta(), p.phi(), p.mass());
+      	new((*gen_particle_4mom)[ngen]) TLorentzVector(moment);
+      	ngen++;
       }
     }
   }
-  return verdect;
 }
 
 bool MuonAnalyzer::IsTightMuon(const reco::Muon & muon) {
@@ -338,15 +360,19 @@ bool MuonAnalyzer::IsTightMuon(const reco::Muon & muon) {
 }
 
 bool MuonAnalyzer::is_trigger_matched(const edm::Event& iEvent, const TLorentzVector mu) {
-	EDGetTokenT<trigger::TriggerEvent>  trigEventToken;
-	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT");
-	trigEventToken = consumes<trigger::TriggerEvent>(trigEventTag);
-//	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT"); //make sure have correct process on MC
-	edm::Handle<trigger::TriggerEvent> trigEvent;
-	iEvent.getByToken(trigEventToken, trigEvent);
+	
+	
+//	EDGetTokenT<trigger::TriggerEvent>  trigEventToken;
+//	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT");
+//	trigEventToken = consumes<trigger::TriggerEvent>(trigEventTag);
+	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT"); //make sure have correct process on MC
+	
+	Handle<trigger::TriggerEvent> trigEvent;
+//	iEvent.getByToken(trigEventToken, trigEvent);
+	iEvent.getByLabel(trigEventTag, trigEvent);
 
 	if (!trigEvent.isValid()) {
-		cout << "Trigger summary product not found! Collection returns false always";
+		//cout << "Trigger summary product not found! Collection returns false always";
 	  return false;
 	}
 
