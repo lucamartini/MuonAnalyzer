@@ -33,6 +33,17 @@
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 
 #include "FWCore/ServiceRegistry/interface/Service.h"
+
+#include "FWCore/Framework/interface/ESHandle.h"
+#include "TrackingTools/TransientTrack/interface/TransientTrackBuilder.h"
+#include "TrackingTools/Records/interface/TransientTrackRecord.h"
+#include "DataFormats/VertexReco/interface/Vertex.h"
+#include "DataFormats/VertexReco/interface/VertexFwd.h"
+#include "DataFormats/Candidate/interface/CandidateFwd.h"
+#include "DataFormats/RecoCandidate/interface/RecoCandidate.h"
+#include "DataFormats/RecoCandidate/interface/RecoChargedCandidate.h"
+#include "DataFormats/RecoCandidate/interface/RecoChargedCandidateFwd.h"
+
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 
 #include "DataFormats/Common/interface/Handle.h"
@@ -47,6 +58,10 @@
 
 #include "DataFormats/HLTReco/interface/TriggerObject.h"
 #include "DataFormats/HLTReco/interface/TriggerEvent.h"
+#include "DataFormats/HLTReco/interface/TriggerFilterObjectWithRefs.h"
+#include "DataFormats/HLTReco/interface/TriggerRefsCollections.h"
+
+#include "RecoVertex/KalmanVertexFit/interface/KalmanVertexFitter.h"
 
 #include "TFile.h"
 #include "TTree.h"
@@ -56,6 +71,7 @@
 using namespace std;
 using namespace edm;
 using namespace reco;
+using namespace trigger;
 
 //
 // class declaration
@@ -68,7 +84,6 @@ class MuonAnalyzer : public edm::EDAnalyzer {
 
       static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
 
-
    private:
       virtual void beginJob() ;
       virtual void analyze(const edm::Event&, const edm::EventSetup&);
@@ -79,30 +94,39 @@ class MuonAnalyzer : public edm::EDAnalyzer {
       virtual void beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&);
       virtual void endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&);
 
-      virtual void initialize_tree_vars();
-      virtual void fillGen(const edm::Event& iEvent);
-      virtual void fillReco(const edm::Event& iEvent);
+      void initialize_tree_vars();
+      void fillGen(const edm::Event& iEvent);
+      void fillTrigger(const edm::Event& iEvent, const edm::EventSetup &iSetup);
+      void fillRAWTrigger(const edm::Event& iEvent, const edm::EventSetup& iSetup);
+      void fillReco(const edm::Event& iEvent);
       
       
-      virtual vector<int> is_MC_matched(const edm::Event& iEvent, const Muon * mu);
-      virtual bool is_trigger_matched(const edm::Event& iEvent, const TLorentzVector mu);
+      vector<int> is_MC_matched(const edm::Event& iEvent, const Muon * mu);
+      bool is_trigger_matched(const edm::Event& iEvent, const TLorentzVector mu);
       
-      virtual bool IsTightMuon(const reco::Muon& muon);
+      bool IsTightMuon(const reco::Muon& muon);
       
       // ----------member data ---------------------------
       string outputname_;
       Bool_t doMC_;
+      Bool_t doTrigger_;
+      Bool_t doRAWTrigger_;
       Bool_t doReco_;
       vector< Int_t> pdgId_;
 
       Int_t ngen;
+      Int_t nvtx;
+      Int_t nL3;
+      Int_t nmuons;
+      Int_t ndimuons;
+
       TFile * output_;
       TTree * tree_;
       TClonesArray * gen_particle_4mom;
+      TClonesArray * L3_particle_4mom;
       TClonesArray * reco_muon_4mom;
       TClonesArray * reco_dimuon_4mom;
-      Int_t nmuons;
-      Int_t ndimuons;
+
       Int_t charge[100];
       Int_t dicharge[100];
       Int_t pdgId[100];
@@ -111,6 +135,15 @@ class MuonAnalyzer : public edm::EDAnalyzer {
       
       Int_t gen_pdgId[100];
       Int_t gen_status[100];
+
+      Int_t L3_particle_id[100];
+
+      Float_t normChi2[100];
+      Double_t vtxProb[100];
+      Float_t cosAlpha[100];
+      Float_t LxySignificance[100];
+      Float_t Lxy[100];
+      Float_t Lxyerr[100];
 
       bool isTightMuon[100];
       bool isTriggerMatched[100];
@@ -121,6 +154,7 @@ class MuonAnalyzer : public edm::EDAnalyzer {
 // constants, enums and typedefs
 //
 const Double_t muon_mass = 0.105658;
+const Double_t MuMass2(muon_mass*muon_mass);
 //
 // static data member definitions
 //
@@ -135,6 +169,8 @@ MuonAnalyzer::MuonAnalyzer(const edm::ParameterSet& iConfig)
 
   outputname_ = iConfig.getParameter<string> ("OutputFileName");
   doMC_ = iConfig.getParameter<bool> ("doMC");
+  doTrigger_ = iConfig.getParameter<bool> ("doTrigger");
+  doRAWTrigger_ = iConfig.getParameter<bool> ("doRAWTrigger");
   doReco_ = iConfig.getParameter<bool> ("doReco");
   pdgId_ = iConfig.getParameter <vector <int> > ("pdgId");
 
@@ -144,6 +180,8 @@ MuonAnalyzer::MuonAnalyzer(const edm::ParameterSet& iConfig)
   reco_muon_4mom = new TClonesArray("TLorentzVector", 100);
   reco_dimuon_4mom = new TClonesArray("TLorentzVector", 100);
   gen_particle_4mom = new TClonesArray("TLorentzVector", 100);
+  L3_particle_4mom = new TClonesArray("TLorentzVector", 100);
+
 }
 
 
@@ -168,10 +206,13 @@ void MuonAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSet
 
   initialize_tree_vars();
   if (doMC_) fillGen(iEvent);
+  if (doTrigger_) fillTrigger(iEvent, iSetup);
   if (doReco_) fillReco(iEvent);
-  ////////////////
-  tree_->Fill();//
-  ////////////////
+  if (doRAWTrigger_) fillRAWTrigger(iEvent, iSetup);
+
+  //////////////////
+  tree_->Fill(); ///
+  //////////////////
 }
 
 void MuonAnalyzer::fillReco(const edm::Event& iEvent) {
@@ -208,7 +249,6 @@ void MuonAnalyzer::fillReco(const edm::Event& iEvent) {
 
     new((*reco_muon_4mom)[nmuons]) TLorentzVector(muon_4mom);
     charge[nmuons] = (*muon_i).charge();
-    isTriggerMatched[nmuons] = is_trigger_matched(iEvent, muon_4mom);
 
     if (doMC_) {
       vector <int> family(3, -1);
@@ -216,6 +256,10 @@ void MuonAnalyzer::fillReco(const edm::Event& iEvent) {
       pdgId[nmuons] = family[0];
       pdgIdMom[nmuons] = family[1];
       pdgIdGrandma[nmuons] = family[2];
+    }
+
+    if (doTrigger_) {
+      isTriggerMatched[nmuons] = is_trigger_matched(iEvent, muon_4mom);
     }
 
     // ID
@@ -287,39 +331,61 @@ void MuonAnalyzer::initialize_tree_vars(){
   reco_muon_4mom->Clear();
   reco_dimuon_4mom->Clear();
   gen_particle_4mom->Clear();
+  L3_particle_4mom->Clear();
 
   ngen = 0;
+  nL3 = 0;
   nmuons = 0;
   ndimuons = 0;
+  nvtx = 0;
 }
 
 // ------------ method called once each job just before starting event loop  ------------
 void MuonAnalyzer::beginJob() {
   output_->cd();
 
-  tree_->Branch("nmuons",                  &nmuons,       "nmuons/I");
-  tree_->Branch("reco_muon_charge",        charge,        "charge[nmuons]/I");
+  if (doReco_) {
+    tree_->Branch("nmuons",                  &nmuons,       "nmuons/I");
+    tree_->Branch("reco_muon_charge",        charge,        "charge[nmuons]/I");
   
-  tree_->Branch("ndimuons",                  &ndimuons,      "ndimuons/I");
-  tree_->Branch("reco_dimuon_charge",        dicharge,        "charge[ndimuons]/I");
+    tree_->Branch("ndimuons",                  &ndimuons,      "ndimuons/I");
+    tree_->Branch("reco_dimuon_charge",        dicharge,        "charge[ndimuons]/I");
+    tree_->Branch("reco_muon_4mom",          "TClonesArray", &reco_muon_4mom, 32000, 0);
+    tree_->Branch("reco_muon_isTightMuon",   isTightMuon,      "isTightMuon[nmuons]/O");
+    tree_->Branch("reco_dimuon_4mom",          "TClonesArray", &reco_dimuon_4mom, 32000, 0);
+
+    if (doMC_) {
+      tree_->Branch("reco_muon_pdgId",         pdgId,         "pdgId[nmuons]/I");
+      tree_->Branch("reco_muon_pdgId_mother",  pdgIdMom,      "pdgIdMom[nmuons]/I");
+      tree_->Branch("reco_muon_pdgId_grandma", pdgIdGrandma,  "pdgIdGrandma[nmuons]/I");
+    }
+
+    if (doTrigger_) {
+      tree_->Branch("reco_muon_isTriggerMatched",   isTriggerMatched,      "isTriggerMatched[nmuons]/O");
+    }
+  }
 
   if (doMC_) {
   	tree_->Branch("ngen",          &ngen,  "ngen/I");
   	tree_->Branch("gen_particle_4mom",       "TClonesArray",   &gen_particle_4mom, 32000, 0);
   	tree_->Branch("gen_particle_pdgId",      gen_pdgId,        "pdgId[ngen]/I");
-  	tree_->Branch("gen_particle_status",     gen_status,       "gen_status[ngen]/I");
- 
-  	tree_->Branch("reco_muon_pdgId",         pdgId,         "pdgId[nmuons]/I");
-  	tree_->Branch("reco_muon_pdgId_mother",  pdgIdMom,      "pdgIdMom[nmuons]/I");
-  	tree_->Branch("reco_muon_pdgId_grandma", pdgIdGrandma,  "pdgIdGrandma[nmuons]/I");
+  	tree_->Branch("gen_particle_status",     gen_status,       "gen_status[ngen]/I");  	
   }
 
-  tree_->Branch("reco_muon_4mom",          "TClonesArray", &reco_muon_4mom, 32000, 0);
-  tree_->Branch("reco_muon_isTightMuon",   isTightMuon,      "isTightMuon[nmuons]/O");
-  tree_->Branch("reco_muon_isTriggerMatched",   isTriggerMatched,      "isTriggerMatched[nmuons]/O");
-  
-  tree_->Branch("reco_dimuon_4mom",          "TClonesArray", &reco_dimuon_4mom, 32000, 0);
-
+  if (doTrigger_) {
+    tree_->Branch("nL3",          &nL3,  "nL3/I");
+    tree_->Branch("L3_particle_4mom",       "TClonesArray",   &L3_particle_4mom, 32000, 0);
+    tree_->Branch("L3_particle_id",      L3_particle_id,        "L3_particle_id[nL3]/I");
+  }
+  if (doRAWTrigger_) {
+    tree_->Branch("nvtx",                  &nvtx,       "nvtx/I");
+    tree_->Branch("raw_vtx_normChi2",        normChi2,        "raw_vtx_normChi2[nvtx]/F");
+    tree_->Branch("raw_vtx_Prob",        vtxProb,        "raw_vtx_Prob[nvtx]/D");
+    tree_->Branch("raw_vtx_cosAlpha",        cosAlpha,        "raw_vtx_cosAlpha[nvtx]/F");
+    tree_->Branch("raw_vtx_LxyS",        LxySignificance,        "raw_vtx_LxyS[nvtx]/F");
+    tree_->Branch("raw_vtx_Lxy",        Lxy,        "raw_vtx_Lxy[nvtx]/F");
+    tree_->Branch("raw_vtx_Lxyerr",        Lxyerr,        "raw_vtx_Lxyerr[nvtx]/F");
+  }
 }
 
 void MuonAnalyzer::fillGen(const edm::Event& iEvent) {
@@ -350,6 +416,171 @@ void MuonAnalyzer::fillGen(const edm::Event& iEvent) {
   }
 }
 
+void MuonAnalyzer::fillTrigger(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
+  //	EDGetTokenT<trigger::TriggerEvent>  trigEventToken;
+  //	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT");
+  //	trigEventToken = consumes<trigger::TriggerEvent>(trigEventTag);
+      edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT"); //make sure have correct process on MC
+
+      Handle<trigger::TriggerEvent> trigEvent;
+  //	iEvent.getByToken(trigEventToken, trigEvent);
+      iEvent.getByLabel(trigEventTag, trigEvent);
+
+      if (!trigEvent.isValid()) {
+          cout << "Trigger summary product not found! Collection returns false always";
+        return;
+      }
+
+
+      string filterName("hltVertexmumuFilterBs345"); //hltVertexmumuFilterBs345 hltVertexmumuFilterBs47
+//      string L3NameCollection("hltL3MuonCandidates");
+
+      InputTag L3NameCollection("hltL3MuonCandidates", "", trigEventTag.process());
+
+      trigger::size_type Index(0);
+      Index = trigEvent->collectionIndex(L3NameCollection);
+      if (Index < trigEvent->sizeCollections()) {
+          const trigger::Keys& Keys(trigEvent->collectionKeys());
+          const trigger::size_type n0 (Index == 0? 0 : Keys.at(Index-1));
+          const trigger::size_type n1 (Keys.at(Index));
+          for (trigger::size_type i = n0; i != n1; ++i) {
+              const trigger::TriggerObject& obj( trigEvent->getObjects().at(i) );
+
+              if (abs(obj.id()) == 13) {
+                  TLorentzVector L3muon_4mom(0., 0., 0., 0.);
+                  L3muon_4mom.SetPtEtaPhiM(obj.pt(), obj.eta(), obj.phi(), obj.mass());
+                  new((*L3_particle_4mom)[nL3]) TLorentzVector(L3muon_4mom);
+                  L3_particle_id[nL3] = obj.id();
+                  nL3++;
+                  for (trigger::size_type j = n0+1; j != n1; ++j) {
+                      const trigger::TriggerObject& obj_j( trigEvent->getObjects().at(j) );
+                      if (abs(obj_j.id()) == 13) {
+                          TLorentzVector L3muon_j_4mom(0., 0., 0., 0.);
+                          L3muon_j_4mom.SetPtEtaPhiM(obj_j.pt(), obj_j.eta(), obj_j.phi(), obj_j.mass());
+                      }
+                  }
+              }
+          }
+      }
+
+}
+
+void MuonAnalyzer::fillRAWTrigger(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
+
+  InputTag L3NameCollection("hltL3MuonCandidates", "", "HLT");
+
+  Handle<reco::RecoChargedCandidateCollection> mucands;
+  iEvent.getByLabel(L3NameCollection, mucands);
+
+  if (!mucands.isValid()) return;
+
+        //get the transient track builder:
+  edm::ESHandle<TransientTrackBuilder> theB;
+  iSetup.get<TransientTrackRecord>().get("TransientTrackBuilder",theB);
+
+  std::auto_ptr<VertexCollection> vertexCollection(new VertexCollection());
+
+  // look at all mucands, check cuts and make vertices
+  double e1,e2;
+  Particle::LorentzVector p,p1,p2;
+
+  RecoChargedCandidateCollection::const_iterator cand1;
+  RecoChargedCandidateCollection::const_iterator cand2;
+
+  for (cand1=mucands->begin(); cand1!=mucands->end(); cand1++) {
+    TrackRef tk1 = cand1->get<TrackRef>();
+    cand2 = cand1; cand2++;
+    for (; cand2!=mucands->end(); cand2++) {
+      TrackRef tk2 = cand2->get<TrackRef>();
+      if (cand1->charge()*cand2->charge()>0) continue;
+
+    // Combined dimuon system
+      e1 = sqrt(cand1->momentum().Mag2()+MuMass2);
+      e2 = sqrt(cand2->momentum().Mag2()+MuMass2);
+      p1 = Particle::LorentzVector(cand1->px(),cand1->py(),cand1->pz(),e1);
+      p2 = Particle::LorentzVector(cand2->px(),cand2->py(),cand2->pz(),e2);
+      p = p1+p2;
+
+      // do the vertex fit
+      vector<TransientTrack> t_tks;
+      TransientTrack ttkp1 = (*theB).build(&tk1);
+      TransientTrack ttkp2 = (*theB).build(&tk2);
+      t_tks.push_back(ttkp1);
+      t_tks.push_back(ttkp2);
+
+      KalmanVertexFitter kvf;
+      TransientVertex tv = kvf.vertex(t_tks);
+      if (!tv.isValid()) continue;
+
+      Vertex vertex = tv;
+//      cout << vertex.x() << " " << vertex.y() << " " << vertex.z() << endl;
+      // put vertex in the event
+      vertexCollection->push_back(vertex);
+    }
+  }
+
+  // get beam spot
+  reco::BeamSpot vertexBeamSpot;
+  edm::Handle<reco::BeamSpot> recoBeamSpotHandle;
+  iEvent.getByLabel("hltOnlineBeamSpot",recoBeamSpotHandle);
+  vertexBeamSpot = *recoBeamSpotHandle;
+
+
+  for(reco::VertexCollection::iterator it = vertexCollection->begin(); it!= vertexCollection->end(); it++) {
+    reco::Vertex displacedVertex = *it;
+    if( (displacedVertex.chi2()>=0.0) && (displacedVertex.ndof()>0) ) vtxProb[nvtx] = TMath::Prob(displacedVertex.chi2(), displacedVertex.ndof() );
+
+    normChi2[nvtx] = displacedVertex.normalizedChi2();
+
+    // get the two muons from the vertex
+    reco::Vertex::trackRef_iterator trackIt = displacedVertex.tracks_begin();
+    reco::TrackRef vertextkRef1 = (*trackIt).castTo<reco::TrackRef>() ;
+    // the second one
+    trackIt++;
+    reco::TrackRef vertextkRef2 = (*trackIt).castTo<reco::TrackRef>();
+
+    // first find these two tracks in the muon collection
+    reco::RecoChargedCandidateCollection::const_iterator cand1;
+    reco::RecoChargedCandidateCollection::const_iterator cand2;
+
+    int iFoundRefs = 0;
+    for (reco::RecoChargedCandidateCollection::const_iterator cand=mucands->begin(); cand!=mucands->end(); cand++) {
+      reco::TrackRef tkRef = cand->get<reco::TrackRef>();
+      if(tkRef == vertextkRef1) {cand1 = cand; iFoundRefs++;}
+      if(tkRef == vertextkRef2) {cand2 = cand; iFoundRefs++;}
+    }
+    if(iFoundRefs != 2) throw cms::Exception("BadLogic") << "HLTDisplacedmumuFilter: ERROR: the Jpsi vertex must have exactly two muons by definition." << std::endl;
+
+    // calculate two-track transverse momentum
+    math::XYZVector pperp(cand1->px() + cand2->px(),
+                          cand1->py() + cand2->py(),
+                          0.);
+
+
+    reco::Vertex::Point vpoint=displacedVertex.position();
+    //translate to global point, should be improved
+    GlobalPoint secondaryVertex (vpoint.x(), vpoint.y(), vpoint.z());
+
+    reco::Vertex::Error verr = displacedVertex.error();
+    // translate to global error, should be improved
+    GlobalError err(verr.At(0,0), verr.At(1,0), verr.At(1,1), verr.At(2,0), verr.At(2,1), verr.At(2,2) );
+
+    GlobalPoint displacementFromBeamspot( -1*((vertexBeamSpot.x0() - secondaryVertex.x()) + (secondaryVertex.z() - vertexBeamSpot.z0()) * vertexBeamSpot.dxdz()),
+                                          -1*((vertexBeamSpot.y0() - secondaryVertex.y())+ (secondaryVertex.z() - vertexBeamSpot.z0()) * vertexBeamSpot.dydz()), 0);
+
+    Lxy[nvtx] = displacementFromBeamspot.perp();
+    Lxyerr[nvtx] = sqrt(err.rerr(displacementFromBeamspot));
+    LxySignificance[nvtx] = Lxyerr[nvtx]/Lxy[nvtx];
+
+    //calculate the angle between the decay length and the mumumu momentum
+    reco::Vertex::Point vperp(displacementFromBeamspot.x(),displacementFromBeamspot.y(),0.);
+
+    cosAlpha[nvtx] = vperp.Dot(pperp)/(vperp.R()*pperp.R());
+
+    nvtx++;
+  }
+}
+
 bool MuonAnalyzer::IsTightMuon(const reco::Muon & muon) {
   //if(!muon.isPFMuon() || !muon.isGlobalMuon() ) return false;
   if(!muon.isGlobalMuon() ) return false;
@@ -372,7 +603,7 @@ bool MuonAnalyzer::is_trigger_matched(const edm::Event& iEvent, const TLorentzVe
 	iEvent.getByLabel(trigEventTag, trigEvent);
 
 	if (!trigEvent.isValid()) {
-		//cout << "Trigger summary product not found! Collection returns false always";
+		cout << "Trigger summary product not found! Collection returns false always";
 	  return false;
 	}
 
