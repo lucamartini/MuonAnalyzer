@@ -68,6 +68,10 @@
 #include "TLorentzVector.h"
 #include "TClonesArray.h"
 
+#include "DataFormats/HLTReco/interface/TriggerTypeDefs.h"
+#include "DataFormats/Common/interface/TriggerResults.h"
+#include "FWCore/Common/interface/TriggerNames.h"
+
 using namespace std;
 using namespace edm;
 using namespace reco;
@@ -113,6 +117,11 @@ class MuonAnalyzer : public edm::EDAnalyzer {
       Bool_t doRAWTrigger_;
       Bool_t doReco_;
       vector< Int_t> pdgId_;
+      vector <string> HLTPaths_;
+
+      map <string, int> mHLTPaths_;
+
+      string HLTString_;
 
       Int_t ngen;
       Int_t nvtx;
@@ -169,10 +178,12 @@ MuonAnalyzer::MuonAnalyzer(const edm::ParameterSet& iConfig)
 
   outputname_ = iConfig.getParameter<string> ("OutputFileName");
   doMC_ = iConfig.getParameter<bool> ("doMC");
+  HLTString_ = iConfig.getParameter<string> ("HLTString");
   doTrigger_ = iConfig.getParameter<bool> ("doTrigger");
   doRAWTrigger_ = iConfig.getParameter<bool> ("doRAWTrigger");
   doReco_ = iConfig.getParameter<bool> ("doReco");
   pdgId_ = iConfig.getParameter <vector <int> > ("pdgId");
+  HLTPaths_ = iConfig.getParameter <vector <string> > ("HLTPaths");
 
   output_ = new TFile (outputname_.c_str(), "RECREATE" );
   tree_ = new TTree("tree","tree");
@@ -181,6 +192,10 @@ MuonAnalyzer::MuonAnalyzer(const edm::ParameterSet& iConfig)
   reco_dimuon_4mom = new TClonesArray("TLorentzVector", 100);
   gen_particle_4mom = new TClonesArray("TLorentzVector", 100);
   L3_particle_4mom = new TClonesArray("TLorentzVector", 100);
+
+  for (unsigned int i = 0; i < HLTPaths_.size(); i++) {
+    mHLTPaths_[HLTPaths_[i]] = false;
+  }
 
 }
 
@@ -338,6 +353,8 @@ void MuonAnalyzer::initialize_tree_vars(){
   nmuons = 0;
   ndimuons = 0;
   nvtx = 0;
+
+  for (unsigned int i = 0; i < HLTPaths_.size(); i++) mHLTPaths_[HLTPaths_[i]] = false;
 }
 
 // ------------ method called once each job just before starting event loop  ------------
@@ -376,6 +393,9 @@ void MuonAnalyzer::beginJob() {
     tree_->Branch("nL3",          &nL3,  "nL3/I");
     tree_->Branch("L3_particle_4mom",       "TClonesArray",   &L3_particle_4mom, 32000, 0);
     tree_->Branch("L3_particle_id",      L3_particle_id,        "L3_particle_id[nL3]/I");
+    for (unsigned int i = 0; i < HLTPaths_.size(); i++) {
+      tree_->Branch(HLTPaths_[i].c_str(),   &mHLTPaths_[HLTPaths_[i]],      Form("%s/O", HLTPaths_[i].c_str()));
+    }
   }
   if (doRAWTrigger_) {
     tree_->Branch("nvtx",                  &nvtx,       "nvtx/I");
@@ -417,10 +437,10 @@ void MuonAnalyzer::fillGen(const edm::Event& iEvent) {
 }
 
 void MuonAnalyzer::fillTrigger(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
+  //// L3 objects
   //	EDGetTokenT<trigger::TriggerEvent>  trigEventToken;
-  //	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT");
   //	trigEventToken = consumes<trigger::TriggerEvent>(trigEventTag);
-      edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT"); //make sure have correct process on MC
+      edm::InputTag trigEventTag("hltTriggerSummaryAOD", "", HLTString_.c_str()); //make sure have correct process on MC
 
       Handle<trigger::TriggerEvent> trigEvent;
   //	iEvent.getByToken(trigEventToken, trigEvent);
@@ -430,8 +450,6 @@ void MuonAnalyzer::fillTrigger(const edm::Event& iEvent, const edm::EventSetup& 
           cout << "Trigger summary product not found! Collection returns false always";
         return;
       }
-
-
       string filterName("hltVertexmumuFilterBs345"); //hltVertexmumuFilterBs345 hltVertexmumuFilterBs47
 //      string L3NameCollection("hltL3MuonCandidates");
 
@@ -463,11 +481,37 @@ void MuonAnalyzer::fillTrigger(const edm::Event& iEvent, const edm::EventSetup& 
           }
       }
 
+      //// HLT bits
+      Handle<TriggerResults> hltresults;
+      InputTag HLTbits("TriggerResults", "", HLTString_.c_str());
+      iEvent.getByLabel(HLTbits, hltresults);
+
+      if (hltresults.isValid()) {
+        int ntrigs=hltresults->size();
+        if (ntrigs==0) cout << "%HLTInfo -- No trigger name given in TriggerResults of the input " << endl;
+        edm::TriggerNames triggerNames_ = iEvent.triggerNames(* hltresults);
+
+        for (unsigned int i = 0; i < HLTPaths_.size(); i++) {
+
+          for ( int j=0; j!=ntrigs; j++) {
+
+            string trigName = triggerNames_.triggerName(j);
+            size_t found = trigName.find(HLTPaths_[i]);
+            if (found != std::string::npos) {
+              mHLTPaths_[HLTPaths_[i]] = hltresults->accept(j);
+              break;
+            }
+          }
+        }
+      }
+      else cout << "hltresuts is not valid" << endl;
+
 }
 
 void MuonAnalyzer::fillRAWTrigger(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
 
-  InputTag L3NameCollection("hltL3MuonCandidates", "", "HLT");
+//  InputTag L3NameCollection("hltL3MuonCandidates", "", "HLT");
+  InputTag L3NameCollection("hltL3MuonCandidates", "", HLTString_.c_str());
 
   Handle<reco::RecoChargedCandidateCollection> mucands;
   iEvent.getByLabel(L3NameCollection, mucands);
@@ -594,9 +638,9 @@ bool MuonAnalyzer::is_trigger_matched(const edm::Event& iEvent, const TLorentzVe
 	
 	
 //	EDGetTokenT<trigger::TriggerEvent>  trigEventToken;
-//	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT");
 //	trigEventToken = consumes<trigger::TriggerEvent>(trigEventTag);
-	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT"); //make sure have correct process on MC
+//	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT"); //make sure have correct process on MC
+  edm::InputTag trigEventTag("hltTriggerSummaryAOD","", HLTString_.c_str()); //make sure have correct process on MC
 	
 	Handle<trigger::TriggerEvent> trigEvent;
 //	iEvent.getByToken(trigEventToken, trigEvent);
