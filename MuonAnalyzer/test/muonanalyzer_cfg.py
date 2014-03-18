@@ -120,15 +120,15 @@ from Configuration.AlCa.GlobalTag import GlobalTag
 process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:mc', '')
 
 process.demo = cms.EDAnalyzer('MuonAnalyzer',
-    OutputFileName = cms.string("muontree000.root"),
-    doMC = cms.bool(False),
-    doReco = cms.bool(False),
+    OutputFileName = cms.string("muontree_5314_v2.root"),
+    doMC = cms.bool(True),
+    doReco = cms.bool(True),
     doTrigger = cms.bool(True),
-    doRAWTrigger = cms.bool(True),
+    doRAWTrigger = cms.bool(False),
     pdgId = cms.vint32(13, 531),
-    HLTString = cms.string("HLT000"),
+    HLTString = cms.string("HLT"),
     HLTPaths = cms.vstring("HLT_DoubleMu4_Jpsi_Displaced_v", "HLT_DoubleMu4_JpsiTk_Displaced_v", "HLT_Dimuon0_Jpsi_v", "HLT_Dimuon0_Jpsi_NoVertexing_v", "HLT_Dimuon8_Jpsi_v", "HLT_Dimuon10_Jpsi_v", "HLT_Dimuon0_Jpsi_Muon_v", "HLT_Mu5_L2Mu3_Jpsi_v", "HLT_Mu5_Track2_Jpsi_v22", "HLT_Mu5_Track3p5_Jpsi_v", "HLT_Mu7_Track7_Jpsi_v")
 )
 
 
-process.p = cms.EndPath(process.demo)
+process.p = cms.Path(process.demo)

@@ -119,7 +119,7 @@ class MuonAnalyzer : public edm::EDAnalyzer {
       vector< Int_t> pdgId_;
       vector <string> HLTPaths_;
 
-      map <string, int> mHLTPaths_;
+      map <string, bool> mHLTPaths_;
 
       string HLTString_;
 
