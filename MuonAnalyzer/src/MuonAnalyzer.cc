@@ -143,6 +143,7 @@ class MuonAnalyzer : public edm::EDAnalyzer {
       Int_t pdgIdGrandma[100];
       
       Int_t gen_pdgId[100];
+      Int_t gen_pdgIdMom[100];
       Int_t gen_status[100];
 
       Int_t L3_particle_id[100];
@@ -385,7 +386,8 @@ void MuonAnalyzer::beginJob() {
   if (doMC_) {
   	tree_->Branch("ngen",          &ngen,  "ngen/I");
   	tree_->Branch("gen_particle_4mom",       "TClonesArray",   &gen_particle_4mom, 32000, 0);
-  	tree_->Branch("gen_particle_pdgId",      gen_pdgId,        "pdgId[ngen]/I");
+    tree_->Branch("gen_particle_pdgId",      gen_pdgId,        "gen_pdgId[ngen]/I");
+    tree_->Branch("gen_particle_pdgIdMom",   gen_pdgIdMom,   "gen_pdgIdMom[ngen]/I");
   	tree_->Branch("gen_particle_status",     gen_status,       "gen_status[ngen]/I");  	
   }
 
@@ -423,10 +425,11 @@ void MuonAnalyzer::fillGen(const edm::Event& iEvent) {
     int pdgId_i = *it;
     for(size_t i = 0; i < genParticles->size(); ++i) {
       const GenParticle & p = (*genParticles)[i];
-//      cout << p.pdgId()  << "  " << p.status() << endl;
+      const Candidate * mom = p.mother();
       if (abs(p.pdgId()) == pdgId_i) {
       	gen_status[ngen] = p.status();
       	gen_pdgId[ngen] = p.pdgId();
+        gen_pdgIdMom[ngen] = mom->pdgId();
       	TLorentzVector moment(0., 0., 0., 0.);
       	moment.SetPtEtaPhiM(p.pt(), p.eta(), p.phi(), p.mass());
       	new((*gen_particle_4mom)[ngen]) TLorentzVector(moment);
