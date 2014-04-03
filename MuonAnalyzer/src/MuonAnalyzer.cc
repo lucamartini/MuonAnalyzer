@@ -609,7 +609,7 @@ void MuonAnalyzer::fillRAWTrigger(const edm::Event& iEvent, const edm::EventSetu
     TLorentzVector cand1_4mom(0., 0., 0., 0.);
     TLorentzVector cand2_4mom(0., 0., 0., 0.);
     cand1_4mom.SetPtEtaPhiM(cand1->pt(), cand1->eta(), cand1->phi(), muon_mass);
-    cand2_4mom.SetPtEtaPhiM(cand1->pt(), cand1->eta(), cand1->phi(), muon_mass);
+    cand2_4mom.SetPtEtaPhiM(cand2->pt(), cand2->eta(), cand2->phi(), muon_mass);
     TLorentzVector vtx_4mom(0., 0., 0., 0.);
     vtx_4mom = cand1_4mom + cand2_4mom;
     new((*raw_vtx_4mom)[nvtx]) TLorentzVector(vtx_4mom);
@@ -633,7 +633,7 @@ void MuonAnalyzer::fillRAWTrigger(const edm::Event& iEvent, const edm::EventSetu
 
     Lxy[nvtx] = displacementFromBeamspot.perp();
     Lxyerr[nvtx] = sqrt(err.rerr(displacementFromBeamspot));
-    LxySignificance[nvtx] = Lxyerr[nvtx]/Lxy[nvtx];
+    LxySignificance[nvtx] = Lxy[nvtx]/Lxyerr[nvtx];
 
     //calculate the angle between the decay length and the mumu momentum
     reco::Vertex::Point vperp(displacementFromBeamspot.x(),displacementFromBeamspot.y(),0.);
