@@ -2,13 +2,13 @@
 //
 // Package:    MuonAnalyzer
 // Class:      MuonAnalyzer
-// 
+//
 /**\class MuonAnalyzer MuonAnalyzer.cc MuonAnalyzer/MuonAnalyzer/src/MuonAnalyzer.cc
 
- Description: [one line class summary]
+   Description: [one line class summary]
 
- Implementation:
-     [Notes on implementation]
+   Implementation:
+   [Notes on implementation]
 */
 //
 // Original Author:  Luca MARTINI
@@ -35,6 +35,7 @@
 #include "FWCore/ServiceRegistry/interface/Service.h"
 
 #include "FWCore/Framework/interface/ESHandle.h"
+
 #include "TrackingTools/TransientTrack/interface/TransientTrackBuilder.h"
 #include "TrackingTools/Records/interface/TransientTrackRecord.h"
 #include "DataFormats/VertexReco/interface/Vertex.h"
@@ -72,93 +73,138 @@
 #include "DataFormats/Common/interface/TriggerResults.h"
 #include "FWCore/Common/interface/TriggerNames.h"
 
+#include "TrackingTools/PatternTools/interface/TwoTrackMinimumDistance.h"
+#include "TrackingTools/IPTools/interface/IPTools.h"
+#include "DataFormats/Math/interface/deltaR.h"
+
 using namespace std;
 using namespace edm;
 using namespace reco;
 using namespace trigger;
+
+struct SimpleTrack
+{
+  SimpleTrack(const double & inP, const double & inPt, const double & inEta, const double & inPhi,
+              const int inNdof, const double & inDoca,
+              const double & inDocaSignificance,
+              const int inVertexId, const bool inHighPurity,
+              const double & inDeltaRMu1, const double & inDeltaRMu2, const double inDeltaRCand) :
+      p(inP), pt(inPt), eta(inEta), phi(inPhi),
+      ndof(inNdof), doca(inDoca),
+      docaSignificance(inDocaSignificance),
+      vertexId(inVertexId), highPurity(inHighPurity),
+      deltaRMu1(inDeltaRMu1), deltaRMu2(inDeltaRMu2), deltaRCand(inDeltaRCand)
+  {}
+
+  bool operator<(const SimpleTrack & compTrack) const {
+    return( doca < compTrack.doca );
+  }
+
+  double p;
+  double pt;
+  double eta;
+  double phi;
+  int ndof;
+  double doca;
+  double docaSignificance;
+  int vertexId;
+  bool highPurity;
+  double deltaRMu1;
+  double deltaRMu2;
+  double deltaRCand;
+};
 
 //
 // class declaration
 //
 
 class MuonAnalyzer : public edm::EDAnalyzer {
-   public:
-      explicit MuonAnalyzer(const edm::ParameterSet&);
-      ~MuonAnalyzer();
+public:
+  explicit MuonAnalyzer(const edm::ParameterSet&);
+  ~MuonAnalyzer();
 
-      static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
+  static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
 
-   private:
-      virtual void beginJob() ;
-      virtual void analyze(const edm::Event&, const edm::EventSetup&);
-      virtual void endJob() ;
+private:
+  virtual void beginJob() ;
+  virtual void analyze(const edm::Event&, const edm::EventSetup&);
+  virtual void endJob() ;
 
-      virtual void beginRun(edm::Run const&, edm::EventSetup const&);
-      virtual void endRun(edm::Run const&, edm::EventSetup const&);
-      virtual void beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&);
-      virtual void endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&);
+  virtual void beginRun(edm::Run const&, edm::EventSetup const&);
+  virtual void endRun(edm::Run const&, edm::EventSetup const&);
+  virtual void beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&);
+  virtual void endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&);
 
-      void initialize_tree_vars();
-      void fillGen(const edm::Event& iEvent);
-      void fillTriggerHLTpaths(const edm::Event& iEvent);
-      void fillTriggerL3(const edm::Event& iEvent, const edm::EventSetup &iSetup);
-      void fillRAWTrigger(const edm::Event& iEvent, const edm::EventSetup& iSetup);
-      void fillReco(const edm::Event& iEvent);
-      
-      
-      vector<int> is_MC_matched(const edm::Event& iEvent, const Muon * mu);
-      bool is_trigger_matched(const edm::Event& iEvent, const TLorentzVector mu);
-      
-      bool IsTightMuon(const reco::Muon& muon);
-      
-      // ----------member data ---------------------------
-      string outputname_;
-      Bool_t doMC_;
-      Bool_t doTrigger_;
-      Bool_t doRAWTrigger_;
-      Bool_t doReco_;
-      vector< Int_t> pdgId_;
-      vector <string> HLTPaths_;
+  void initialize_tree_vars();
+  void fillGen(const edm::Event& iEvent);
+  void fillTriggerHLTpaths(const edm::Event& iEvent);
+  void fillTriggerL3(const edm::Event& iEvent, const edm::EventSetup &iSetup);
+  void fillRAWTrigger(const edm::Event& iEvent, const edm::EventSetup& iSetup);
+  void fillReco(const edm::Event& iEvent, const edm::EventSetup& iSetup);
+  int findVertexId(const reco::Vertex &theOriginalPV,
+                   const std::vector<reco::Vertex> &priVtxs,
+                   const reco::Track & track, const double & maxDeltaR );
 
-      map <string, bool> mHLTPaths_;
+  vector<int> is_MC_matched(const edm::Event& iEvent, const Muon * mu);
+  bool is_trigger_matched(const edm::Event& iEvent, const TLorentzVector mu);
 
-      string HLTString_;
+  bool IsTightMuon(const reco::Muon& muon);
 
-      Int_t ngen;
-      Int_t nvtx;
-      Int_t nL3;
-      Int_t nmuons;
-      Int_t ndimuons;
+  // ----------member data ---------------------------
+  string outputname_;
+  Bool_t doMC_;
+  Bool_t doTrigger_;
+  Bool_t doRAWTrigger_;
+  Bool_t doReco_;
+  vector< Int_t> pdgId_;
+  vector <string> HLTPaths_;
 
-      TFile * output_;
-      TTree * tree_;
-      TClonesArray * gen_particle_4mom;
-      TClonesArray * L3_particle_4mom;
-      TClonesArray * reco_muon_4mom;
-      TClonesArray * reco_dimuon_4mom;
-      TClonesArray * raw_vtx_4mom;
+  map <string, bool> mHLTPaths_;
 
-      Int_t charge[100];
-      Int_t dicharge[100];
-      Int_t pdgId[100];
-      Int_t pdgIdMom[100];
-      Int_t pdgIdGrandma[100];
-      
-      Int_t gen_pdgId[100];
-      Int_t gen_pdgIdMom[100];
-      Int_t gen_status[100];
+  string HLTString_;
 
-      Int_t L3_particle_id[100];
+  InputTag onlineBS_;
+  InputTag offlineBS_;
+  InputTag PVs_;
 
-      Float_t normChi2[100];
-      Double_t vtxProb[100];
-      Float_t cosAlpha[100];
-      Float_t LxySignificance[100];
-      Float_t Lxy[100];
-      Float_t Lxyerr[100];
 
-      bool isTightMuon[100];
-      bool isTriggerMatched[100];
+  Int_t ngen;
+  Int_t nsv_hlt;
+  Int_t nL3;
+  Int_t nmuons;
+  Int_t ndimuons;
+  Int_t npv;
+
+  TFile * output_;
+  TTree * tree_;
+  TClonesArray * gen_particle_4mom;
+  TClonesArray * L3_particle_4mom;
+  TClonesArray * reco_muon_4mom;
+  TClonesArray * reco_dimuon_4mom;
+  TClonesArray * hlt_vtx_4mom;
+
+  Int_t charge[100];
+  Int_t dicharge[100];
+  Int_t pdgId[100];
+  Int_t pdgIdMom[100];
+  Int_t pdgIdGrandma[100];
+
+  Int_t gen_pdgId[100];
+  Int_t gen_pdgIdMom[100];
+  Int_t gen_status[100];
+
+  Int_t L3_particle_id[100];
+
+  Float_t normChi2[100];
+  Double_t vtxProb[100];
+  Float_t cosAlpha[100];
+  Float_t LxySignificance[100];
+  Float_t Lxy[100];
+  Float_t Lxyerr[100];
+
+  bool isTightMuon[100];
+  bool isTriggerMatched[100];
+  Double_t dimuon_iso[100];
 
 };
 
@@ -166,7 +212,7 @@ class MuonAnalyzer : public edm::EDAnalyzer {
 // constants, enums and typedefs
 //
 const Double_t muon_mass = 0.105658;
-const Double_t MuMass2(muon_mass*muon_mass);
+const Double_t MuMass2(muon_mass * muon_mass);
 //
 // static data member definitions
 //
@@ -177,25 +223,28 @@ const Double_t MuMass2(muon_mass*muon_mass);
 MuonAnalyzer::MuonAnalyzer(const edm::ParameterSet& iConfig)
 
 {
-   //now do what ever initialization is needed
+  //now do what ever initialization is needed
 
-  outputname_ = iConfig.getParameter<string> ("OutputFileName");
-  doMC_ = iConfig.getParameter<bool> ("doMC");
-  HLTString_ = iConfig.getParameter<string> ("HLTString");
-  doTrigger_ = iConfig.getParameter<bool> ("doTrigger");
+  outputname_   = iConfig.getParameter<string> ("OutputFileName");
+  doReco_       = iConfig.getParameter<bool> ("doReco");
+  doMC_         = iConfig.getParameter<bool> ("doMC");
+  doTrigger_    = iConfig.getParameter<bool> ("doTrigger");
   doRAWTrigger_ = iConfig.getParameter<bool> ("doRAWTrigger");
-  doReco_ = iConfig.getParameter<bool> ("doReco");
-  pdgId_ = iConfig.getParameter <vector <int> > ("pdgId");
-  HLTPaths_ = iConfig.getParameter <vector <string> > ("HLTPaths");
+  pdgId_        = iConfig.getParameter <vector <int> > ("pdgId");
+  HLTString_    = iConfig.getParameter<string> ("HLTString");
+  HLTPaths_     = iConfig.getParameter <vector <string> > ("HLTPaths");
+  onlineBS_     = iConfig.getParameter <InputTag> ("OnlineBeamSpot");
+  offlineBS_    = iConfig.getParameter<InputTag>("OfflineBeamSpot");
+  PVs_          = iConfig.getParameter <InputTag> ("PrimaryVertexCollection");
 
   output_ = new TFile (outputname_.c_str(), "RECREATE" );
-  tree_ = new TTree("tree","tree");
+  tree_   = new TTree("tree","tree");
 
-  reco_muon_4mom = new TClonesArray("TLorentzVector", 100);
-  reco_dimuon_4mom = new TClonesArray("TLorentzVector", 100);
+  reco_muon_4mom    = new TClonesArray("TLorentzVector", 100);
+  reco_dimuon_4mom  = new TClonesArray("TLorentzVector", 100);
   gen_particle_4mom = new TClonesArray("TLorentzVector", 100);
-  L3_particle_4mom = new TClonesArray("TLorentzVector", 100);
-  raw_vtx_4mom = new TClonesArray("TLorentzVector", 100);
+  L3_particle_4mom  = new TClonesArray("TLorentzVector", 100);
+  hlt_vtx_4mom      = new TClonesArray("TLorentzVector", 100);
 
   for (unsigned int i = 0; i < HLTPaths_.size(); i++) {
     mHLTPaths_[HLTPaths_[i]] = false;
@@ -206,9 +255,9 @@ MuonAnalyzer::MuonAnalyzer(const edm::ParameterSet& iConfig)
 
 MuonAnalyzer::~MuonAnalyzer()
 {
- 
-   // do anything here that needs to be done at desctruction time
-   // (e.g. close files, deallocate resources etc.)
+
+  // do anything here that needs to be done at desctruction time
+  // (e.g. close files, deallocate resources etc.)
   delete tree_;
   output_->Close();
   delete output_;
@@ -229,7 +278,7 @@ void MuonAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSet
     fillTriggerHLTpaths(iEvent);
     fillTriggerL3(iEvent, iSetup);
   }
-  if (doReco_) fillReco(iEvent);
+  if (doReco_) fillReco(iEvent, iSetup);
   if (doRAWTrigger_) fillRAWTrigger(iEvent, iSetup);
 
   //////////////////
@@ -237,22 +286,47 @@ void MuonAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSet
   //////////////////
 }
 
-void MuonAnalyzer::fillReco(const edm::Event& iEvent) {
-	
+void MuonAnalyzer::fillReco(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
+
+  /// vertex
+  Handle<VertexCollection> priVtxs;
+  iEvent.getByLabel(PVs_, priVtxs);
+  npv = priVtxs->size();
+  vector< Vertex> priVtxs_v;
+  for( auto PVit = priVtxs->begin(); PVit != priVtxs->end(); ++PVit ) {
+    const Vertex * v = &(*PVit);
+    priVtxs_v.push_back(*v);
+  }
+
+  Handle<TrackCollection> tkColl;
+  iEvent.getByLabel("generalTracks", tkColl);
+  //get the transient track builder:
+  ESHandle<TransientTrackBuilder> theTTBuilder;
+  iSetup.get<TransientTrackRecord>().get("TransientTrackBuilder",theTTBuilder);
+
+  ESHandle<MagneticField> magneticField;
+  iSetup.get<IdealMagneticFieldRecord>().get(magneticField);
+
+  Handle<BeamSpot> theBeamSpot;
+  iEvent.getByLabel(offlineBS_, theBeamSpot);
+  BeamSpot bs = *theBeamSpot;
+
   string theMuonLabel = "muons";
-  
-//	EDGetTokenT<MuonCollection> theMuonLabel;
-//	theMuonLabel = consumes<MuonCollection>(InputTag("muons"));
-	
-	edm::Handle<MuonCollection> muons;
-//	iEvent.getByToken(theMuonLabel, muons);
-	iEvent.getByLabel(theMuonLabel, muons);
-  
+
+  //	EDGetTokenT<MuonCollection> theMuonLabel;
+  //	theMuonLabel = consumes<MuonCollection>(InputTag("muons"));
+
+  Handle<MuonCollection> muons;
+  //	iEvent.getByToken(theMuonLabel, muons);
+  iEvent.getByLabel(theMuonLabel, muons);
+
   if (!muons.isValid()) {
     cout << "theMuonLabel is not valid" << endl;
     return;
   }
-  
+
+
+
   MuonCollection::const_iterator muon_i;
   for (muon_i = muons->begin(); muon_i!=muons->end(); ++muon_i) { // loop over all muons
     if (nmuons >= 100) {
@@ -287,37 +361,218 @@ void MuonAnalyzer::fillReco(const edm::Event& iEvent) {
     // ID
     isTightMuon[nmuons] = IsTightMuon(*mu);
     nmuons++;
-    
+
     MuonCollection::const_iterator muon_j;
     for (muon_j = muon_i+1; muon_j!=muons->end(); ++muon_j) { // loop over all muons
-    	const Muon * mu_j = &(*muon_j);
-    	if (!mu_j->isGlobalMuon() || !mu_j->isTrackerMuon()) continue;
-    	if (!mu_j->bestTrack()->quality(trackQualityhighPur)) continue;
-    	const Track * muon_track_j = mu_j->bestTrack();
-    	TLorentzVector muon_4mom_j(0., 0., 0., 0.);
-    	if (muon_track_j->pt() < 2.5) continue;
-    	muon_4mom_j.SetPtEtaPhiM(muon_track_j->pt(), muon_track_j->eta(), muon_track_j->phi(), muon_mass);
-    	
-    	TLorentzVector dimuon_4mom(0., 0., 0., 0.);
-    	dimuon_4mom = muon_4mom + muon_4mom_j;
-    	new((*reco_dimuon_4mom)[ndimuons]) TLorentzVector(dimuon_4mom);
-    	dicharge[ndimuons] = (*muon_i).charge() + (*muon_j).charge();
-    	ndimuons++;
+      const Muon * mu_j = &(*muon_j);
+      if (!mu_j->isGlobalMuon() || !mu_j->isTrackerMuon()) continue;
+      if (!mu_j->bestTrack()->quality(trackQualityhighPur)) continue;
+      const Track * muon_track_j = mu_j->bestTrack();
+      TLorentzVector muon_4mom_j(0., 0., 0., 0.);
+      if (muon_track_j->pt() < 2.5) continue;
+      muon_4mom_j.SetPtEtaPhiM(muon_track_j->pt(), muon_track_j->eta(), muon_track_j->phi(), muon_mass);
+
+      TLorentzVector dimuon_4mom(0., 0., 0., 0.);
+      dimuon_4mom = muon_4mom + muon_4mom_j;
+      new((*reco_dimuon_4mom)[ndimuons]) TLorentzVector(dimuon_4mom);
+      dicharge[ndimuons] = (*muon_i).charge() + (*muon_j).charge();
+
+      // SV
+      vector<TransientTrack> t_tks;
+      t_tks.push_back(theTTBuilder->build(mu->bestTrack()));
+      t_tks.push_back(theTTBuilder->build(mu_j->bestTrack()));
+      KalmanVertexFitter kvf;
+      TransientVertex tSV = kvf.vertex(t_tks);
+      if (!tSV.isValid()) continue;
+      Vertex SV = tSV;
+
+      // associate PV, closest in extrapolated Z
+
+      float minDz = 999999.;
+
+      TwoTrackMinimumDistance ttmd;
+      bool status = ttmd.calculate( GlobalTrajectoryParameters(GlobalPoint(SV.position().x(), SV.position().y(), SV.position().z()), GlobalVector(dimuon_4mom.Px(), dimuon_4mom.Py(), dimuon_4mom.Pz()), TrackCharge(dicharge[ndimuons]), &(*magneticField)), GlobalTrajectoryParameters(GlobalPoint(bs.position().x(), bs.position().y(), bs.position().z()), GlobalVector(bs.dxdz(), bs.dydz(), 1.), TrackCharge(0), &(*magneticField)) );
+      float extrapZ = -9E20;
+      if (status) extrapZ = ttmd.points().first.z();
+
+      Vertex thePrimaryV;
+      // Select the closest PV in z
+      for( auto tPV = priVtxs->begin(); tPV != priVtxs->end(); ++tPV ) {
+        float deltaZ = fabs(extrapZ - tPV->position().z()) ;
+        if ( deltaZ < minDz ) {
+          minDz = deltaZ;
+          // thePrimaryV = Vertex(*tPV);
+          thePrimaryV = *tPV;
+        }
+      }
+
+ // count the number of tracks with pT > 900 MeV attached to the chosen vertex
+      double sumPTPV = 0., sumPTNoVtx = 0.;
+      double sumPTPV20 = 0., sumPTNoVtx20 = 0.;
+      double sumPTkMu1 = 0., sumPTkMu2 = 0.;
+      // double sumPTkMu1_20 = 0., sumPTkMu2_20 = 0.;
+      // int countTksOfPV = 0, countTksOfNoVtx = 0;
+      int Ntrk = 0, Ntrkhp = 0, Ntrk20 = 0, Ntrkhp20 = 0;
+      int Ntrk1sigma = 0, Ntrk1sigmahp = 0, Ntrk1sigma20 = 0, Ntrk1sigmahp20 = 0;
+      int Ntrk2sigma = 0, Ntrk2sigmahp = 0, Ntrk2sigma20 = 0, Ntrk2sigmahp20 = 0;
+      int Ntrk3sigma = 0, Ntrk3sigmahp = 0, Ntrk3sigma20 = 0, Ntrk3sigmahp20 = 0;
+      double minDca = 9999.;
+      double sumNdofPV = 0., sumNdofNoVtx = 0.;
+      // double PVndof = thePrimaryV.ndof();
+
+      // TrajectoryStateClosestToPoint mu1TS = t_tks[0].impactPointTSCP();
+      // TrajectoryStateClosestToPoint mu2TS = t_tks[1].impactPointTSCP();
+
+      // Fill a collection of all tracks and:
+      // - if they belong to the PV associated to the candidate set vertexId to 1
+      // - if they belong to another PV set the vertexId to 2
+      // - if they belong to no PV set the vertexId to 0
+      double maxDeltaR = 1.e-5;
+      std::vector<SimpleTrack> simpleTracks;
+      for ( auto track = tkColl->begin(); track != tkColl->end(); ++track ) {
+        if( track->extra().key() == mu->track().key() ) continue;
+        if( track->extra().key() == mu_j->track().key() ) continue;
+
+        // Set defaults
+        double doca = 999.;
+        double docaSig = 999.;
+        int vertexId = 999;
+        bool highPurity = track->quality(reco::TrackBase::highPurity);
+        // Compute doca and doca significance
+        TransientTrack tt = theTTBuilder->build(*track);
+        // Looking in the code it seems absoluteImpactParameter3D uses only the position of the vertex
+
+        pair<bool, Measurement1D> tkPVdist = IPTools::absoluteImpactParameter3D(tt, SV);
+        if( tkPVdist.first ) {
+          doca = tkPVdist.second.value();
+          if(tkPVdist.second.error() != 0) docaSig = doca/tkPVdist.second.error();
+        }
+        vertexId = findVertexId( thePrimaryV, priVtxs_v, *track, maxDeltaR );
+
+        // Muon isolation
+        // --------------
+        double deltaRMu1 = 1.;
+        double deltaRMu2 = 1.;
+        double deltaRCand = 1.;
+        if( vertexId != 2 ) {
+          deltaRCand = deltaR(track->eta(), track->phi(), dimuon_4mom.Eta(), dimuon_4mom.Phi());
+          deltaRMu1 = deltaR(track->eta(),track->phi(), mu->eta(), mu->phi());
+          deltaRMu2 = deltaR(track->eta(),track->phi(), mu_j->eta(), mu_j->phi());
+        }
+        simpleTracks.push_back(SimpleTrack(track->p(), track->pt(), track->eta(), track->phi(), track->ndof(),                                   doca, docaSig, vertexId, highPurity,
+                                                 deltaRMu1, deltaRMu2, deltaRCand));
+      }
+
+      // Sort the simpleTracks. Smallest doca first.
+      std::sort(simpleTracks.begin(), simpleTracks.end());
+
+
+      // Count the number of tracks from the candidate PV or no PV and with pt > 0.5 GeV, doca < 300 microns and doca significance > 1.
+      // Using only the first 20 tracks
+      double maxDoca = 0.03;
+      int tkCount = 0;
+      for( auto tk = simpleTracks.begin(); tk != simpleTracks.end(); ++tk, ++tkCount ) {
+
+        // From here on use only tracks from the candidate PV or no PV
+        if( tk->vertexId == 2 ) continue;
+
+        // if( tk->vertexId == 1 ) ++countTksOfPV;
+        // else if( tk->vertexId == 0 ) ++countTksOfNoVtx;
+
+        double deltaRMuIsoCut = 0.5;
+
+        // Consistent
+        if( tk->vertexId == 1 && tk->p > 0.5 ) {
+          if( tk->deltaRMu1 < deltaRMuIsoCut ) sumPTkMu1 += tk->p;
+          if( tk->deltaRMu2 < deltaRMuIsoCut ) sumPTkMu2 += tk->p;
+        }
+        if( tk->vertexId == 0 && tk->doca < 0.1 && tk->p > 0.5 && tkCount < 20 ) {
+          if( tk->deltaRCand < deltaRMuIsoCut ) sumPTkMu1 += tk->p;
+          if( tk->deltaRCand < deltaRMuIsoCut ) sumPTkMu2 += tk->p;
+        }
+
+        // Take the minimum doca
+        if( minDca > tk->doca ) minDca = tk->doca;
+
+        // Number of close tracks
+        if( tk->pt > 0.5 && tk->doca < maxDoca ) {
+          ++Ntrk;
+          if( tk->highPurity ) ++Ntrkhp;
+          if( tkCount < 20 ) {
+            ++Ntrk20;
+            if( tk->highPurity ) ++Ntrkhp20;
+          }
+
+          // Number of close tracks with doca > 1 sigma
+          if( tk->docaSignificance > 1. ) {
+            ++Ntrk1sigma;
+            if( tk->highPurity ) ++Ntrk1sigmahp;
+            if( tkCount < 20 ) {
+              ++Ntrk1sigma20;
+              if( tk->highPurity ) ++Ntrk1sigmahp20;
+            }
+
+            // Number of close tracks with doca > 2 sigma
+            if( tk->docaSignificance > 2. ) {
+              ++Ntrk2sigma;
+              if( tk->highPurity ) ++Ntrk2sigmahp;
+              if( tkCount < 20 ) {
+                ++Ntrk2sigma20;
+                if( tk->highPurity ) ++Ntrk2sigmahp20;
+              }
+
+              // Number of close tracks with doca > 3 sigma
+              if( tk->docaSignificance > 3. ) {
+                ++Ntrk3sigma;
+                if( tk->highPurity ) ++Ntrk3sigmahp;
+                if( tkCount < 20 ) {
+                  ++Ntrk3sigma20;
+                  if( tk->highPurity ) ++Ntrk3sigmahp20;
+                }
+              }
+            }
+          }
+        }
+
+        // SumPT of tracks from candidate PV or no PV
+        if( tk->pt < 0.9 ) continue;
+        if( deltaR(tk->eta ,tk->phi, dimuon_4mom.Eta(), dimuon_4mom.Phi()) > 0.7 ) continue;
+        if( tk->vertexId == 1 ) {
+          sumNdofPV += tk->ndof;
+          // std::cout << "track(" << tkCount << ") from PV pt = " << tk->pt << std::endl;
+          sumPTPV += tk->pt;
+          if( tkCount < 20 ) sumPTPV20 += tk->pt;
+        }
+        // In this case the doca is also required to be less than 500 microns
+        else if( tk->vertexId == 0 && tk->doca < 0.05 ) {
+          sumNdofNoVtx += tk->ndof;
+          // std::cout << "track(" << tkCount << ") from no PV pt = " << tk->pt << std::endl;
+          sumPTNoVtx += tk->pt;
+          if( tkCount < 20 ) sumPTNoVtx20 += tk->pt;
+        }
+      }
+      double Iso = dimuon_4mom.Pt()/(dimuon_4mom.Pt()+sumPTNoVtx+sumPTPV);
+      //      double Iso20 = myCand.pt()/(myCand.pt()+sumPTNoVtx20+sumPTPV);
+      dimuon_iso[ndimuons] = Iso;
+
+      ndimuons++;
     }
   }
-	
+
+
+
 }
 
 vector <int> MuonAnalyzer::is_MC_matched(const edm::Event& iEvent, const Muon * mu) {
   string theGenLabel = "genParticles";
-  
-//	EDGetTokenT<GenParticleCollection>  theGenLabel;
-//	theGenLabel = consumes<GenParticleCollection>(InputTag("genParticles"));
-	
-	edm::Handle<GenParticleCollection> genParticles;
-//	iEvent.getByToken(theGenLabel, genParticles);
-	iEvent.getByLabel(theGenLabel, genParticles);
-  
+
+  //	EDGetTokenT<GenParticleCollection>  theGenLabel;
+  //	theGenLabel = consumes<GenParticleCollection>(InputTag("genParticles"));
+
+  edm::Handle<GenParticleCollection> genParticles;
+  //	iEvent.getByToken(theGenLabel, genParticles);
+  iEvent.getByLabel(theGenLabel, genParticles);
+
   vector <int> family_tree(3, -1);
   for(size_t i = 0; i < genParticles->size(); ++i) {
     const GenParticle & p = (*genParticles)[i];
@@ -340,7 +595,7 @@ vector <int> MuonAnalyzer::is_MC_matched(const edm::Event& iEvent, const Muon * 
         family_tree[1] = mom->pdgId();
         family_tree[2] = grandma->pdgId();
         break;
-//        cout << "deltaR = " << deltaR << "  pdgId = " << pdgid << "  mother = " << mom->pdgId() << "  grandma = " << grandma->pdgId() << endl;
+        //        cout << "deltaR = " << deltaR << "  pdgId = " << pdgid << "  mother = " << mom->pdgId() << "  grandma = " << grandma->pdgId() << endl;
 
       }
     }
@@ -354,13 +609,14 @@ void MuonAnalyzer::initialize_tree_vars(){
   reco_dimuon_4mom->Clear();
   gen_particle_4mom->Clear();
   L3_particle_4mom->Clear();
-  raw_vtx_4mom->Clear();
+  hlt_vtx_4mom->Clear();
 
   ngen = 0;
   nL3 = 0;
   nmuons = 0;
   ndimuons = 0;
-  nvtx = 0;
+  nsv_hlt = 0;
+  npv = 0;
 
   for (unsigned int i = 0; i < HLTPaths_.size(); i++) mHLTPaths_[HLTPaths_[i]] = false;
 }
@@ -372,12 +628,14 @@ void MuonAnalyzer::beginJob() {
   if (doReco_) {
     tree_->Branch("nmuons",                  &nmuons,       "nmuons/I");
     tree_->Branch("reco_muon_charge",        charge,        "charge[nmuons]/I");
-  
+
     tree_->Branch("ndimuons",                  &ndimuons,      "ndimuons/I");
     tree_->Branch("reco_dimuon_charge",        dicharge,        "charge[ndimuons]/I");
     tree_->Branch("reco_muon_4mom",          "TClonesArray", &reco_muon_4mom, 32000, 0);
     tree_->Branch("reco_muon_isTightMuon",   isTightMuon,      "isTightMuon[nmuons]/O");
     tree_->Branch("reco_dimuon_4mom",          "TClonesArray", &reco_dimuon_4mom, 32000, 0);
+    tree_->Branch("reco_dimuon_iso",        dimuon_iso,        "reco_dimuon_iso[ndimuons]/D");
+    tree_->Branch("npv", &npv, "npv/I");
 
     if (doMC_) {
       tree_->Branch("reco_muon_pdgId",         pdgId,         "pdgId[nmuons]/I");
@@ -391,11 +649,11 @@ void MuonAnalyzer::beginJob() {
   }
 
   if (doMC_) {
-  	tree_->Branch("ngen",          &ngen,  "ngen/I");
-  	tree_->Branch("gen_particle_4mom",       "TClonesArray",   &gen_particle_4mom, 32000, 0);
+    tree_->Branch("ngen",          &ngen,  "ngen/I");
+    tree_->Branch("gen_particle_4mom",       "TClonesArray",   &gen_particle_4mom, 32000, 0);
     tree_->Branch("gen_particle_pdgId",      gen_pdgId,        "gen_pdgId[ngen]/I");
     tree_->Branch("gen_particle_pdgIdMom",   gen_pdgIdMom,   "gen_pdgIdMom[ngen]/I");
-  	tree_->Branch("gen_particle_status",     gen_status,       "gen_status[ngen]/I");  	
+    tree_->Branch("gen_particle_status",     gen_status,       "gen_status[ngen]/I");
   }
 
   if (doTrigger_) {
@@ -407,28 +665,28 @@ void MuonAnalyzer::beginJob() {
     }
   }
   if (doRAWTrigger_) {
-    tree_->Branch("nvtx",                  &nvtx,       "nvtx/I");
-    tree_->Branch("raw_vtx_normChi2",        normChi2,        "raw_vtx_normChi2[nvtx]/F");
-    tree_->Branch("raw_vtx_Prob",        vtxProb,        "raw_vtx_Prob[nvtx]/D");
-    tree_->Branch("raw_vtx_cosAlpha",        cosAlpha,        "raw_vtx_cosAlpha[nvtx]/F");
-    tree_->Branch("raw_vtx_LxyS",        LxySignificance,        "raw_vtx_LxyS[nvtx]/F");
-    tree_->Branch("raw_vtx_Lxy",        Lxy,        "raw_vtx_Lxy[nvtx]/F");
-    tree_->Branch("raw_vtx_Lxyerr",        Lxyerr,        "raw_vtx_Lxyerr[nvtx]/F");
-    tree_->Branch("raw_vtx_4mom",       "TClonesArray",   &raw_vtx_4mom, 32000, 0);
+    tree_->Branch("nsv_hlt",                  &nsv_hlt,       "nsv_hlt/I");
+    tree_->Branch("hlt_vtx_normChi2",        normChi2,        "hlt_vtx_normChi2[nsv_hlt]/F");
+    tree_->Branch("hlt_vtx_Prob",        vtxProb,        "hlt_vtx_Prob[nsv_hlt]/D");
+    tree_->Branch("hlt_vtx_cosAlpha",        cosAlpha,        "hlt_vtx_cosAlpha[nsv_hlt]/F");
+    tree_->Branch("hlt_vtx_LxyS",        LxySignificance,        "hlt_vtx_LxyS[nsv_hlt]/F");
+    tree_->Branch("hlt_vtx_Lxy",        Lxy,        "hlt_vtx_Lxy[nsv_hlt]/F");
+    tree_->Branch("hlt_vtx_Lxyerr",        Lxyerr,        "hlt_vtx_Lxyerr[nsv_hlt]/F");
+    tree_->Branch("hlt_vtx_4mom",       "TClonesArray",   &hlt_vtx_4mom, 32000, 0);
   }
 }
 
 void MuonAnalyzer::fillGen(const edm::Event& iEvent) {
   string theGenLabel = "genParticles";
   Handle< GenParticleCollection > genParticles;
-  
-//	EDGetTokenT<GenParticleCollection>  theGenLabel;
-//	theGenLabel = consumes<GenParticleCollection>(InputTag("genParticles"));
-//	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT"); //make sure have correct process on MC
-	
+
+  //	EDGetTokenT<GenParticleCollection>  theGenLabel;
+  //	theGenLabel = consumes<GenParticleCollection>(InputTag("genParticles"));
+  //	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT"); //make sure have correct process on MC
+
   //	iEvent.getByToken(theGenLabel, genParticles);
-	iEvent.getByLabel(theGenLabel, genParticles);
-  
+  iEvent.getByLabel(theGenLabel, genParticles);
+
   for (vector<int>::iterator it = pdgId_.begin(); it != pdgId_.end(); ++it) {
     int pdgId_i = *it;
     for(size_t i = 0; i < genParticles->size(); ++i) {
@@ -448,7 +706,7 @@ void MuonAnalyzer::fillGen(const edm::Event& iEvent) {
 }
 
 void MuonAnalyzer::fillTriggerHLTpaths(const edm::Event& iEvent) {
-    //// HLT bits
+  //// HLT bits
   Handle<TriggerResults> hltresults;
   InputTag HLTbits("TriggerResults", "", HLTString_.c_str());
   iEvent.getByLabel(HLTbits, hltresults);
@@ -476,52 +734,52 @@ void MuonAnalyzer::fillTriggerHLTpaths(const edm::Event& iEvent) {
 }
 
 void MuonAnalyzer::fillTriggerL3(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
-//// L3 objects
-//	EDGetTokenT<trigger::TriggerEvent>  trigEventToken;
-//	trigEventToken = consumes<trigger::TriggerEvent>(trigEventTag);
-    edm::InputTag trigEventTag("hltTriggerSummaryAOD", "", HLTString_.c_str()); //make sure have correct process on MC
+  //// L3 objects
+  //	EDGetTokenT<trigger::TriggerEvent>  trigEventToken;
+  //	trigEventToken = consumes<trigger::TriggerEvent>(trigEventTag);
+  edm::InputTag trigEventTag("hltTriggerSummaryAOD", "", HLTString_.c_str()); //make sure have correct process on MC
 
-    Handle<trigger::TriggerEvent> trigEvent;
-//	iEvent.getByToken(trigEventToken, trigEvent);
-    iEvent.getByLabel(trigEventTag, trigEvent);
+  Handle<trigger::TriggerEvent> trigEvent;
+  //	iEvent.getByToken(trigEventToken, trigEvent);
+  iEvent.getByLabel(trigEventTag, trigEvent);
 
-    if (!trigEvent.isValid()) {
-        cout << "Trigger summary product not found! Collection returns false always";
-      return;
-    }
+  if (!trigEvent.isValid()) {
+    cout << "Trigger summary product not found! Collection returns false always";
+    return;
+  }
 
-    InputTag L3NameCollection("hltL3MuonCandidates", "", trigEventTag.process());
+  InputTag L3NameCollection("hltL3MuonCandidates", "", trigEventTag.process());
 
-    trigger::size_type Index(0);
-    Index = trigEvent->collectionIndex(L3NameCollection);
-    if (Index < trigEvent->sizeCollections()) {
-        const trigger::Keys& Keys(trigEvent->collectionKeys());
-        const trigger::size_type n0 (Index == 0? 0 : Keys.at(Index-1));
-        const trigger::size_type n1 (Keys.at(Index));
-        for (trigger::size_type i = n0; i != n1; ++i) {
-            const trigger::TriggerObject& obj( trigEvent->getObjects().at(i) );
+  trigger::size_type Index(0);
+  Index = trigEvent->collectionIndex(L3NameCollection);
+  if (Index < trigEvent->sizeCollections()) {
+    const trigger::Keys& Keys(trigEvent->collectionKeys());
+    const trigger::size_type n0 (Index == 0? 0 : Keys.at(Index-1));
+    const trigger::size_type n1 (Keys.at(Index));
+    for (trigger::size_type i = n0; i != n1; ++i) {
+      const trigger::TriggerObject& obj( trigEvent->getObjects().at(i) );
 
-            if (abs(obj.id()) == 13) {
-                TLorentzVector L3muon_4mom(0., 0., 0., 0.);
-                L3muon_4mom.SetPtEtaPhiM(obj.pt(), obj.eta(), obj.phi(), obj.mass());
-                new((*L3_particle_4mom)[nL3]) TLorentzVector(L3muon_4mom);
-                L3_particle_id[nL3] = obj.id();
-                nL3++;
-                for (trigger::size_type j = n0+1; j != n1; ++j) {
-                    const trigger::TriggerObject& obj_j( trigEvent->getObjects().at(j) );
-                    if (abs(obj_j.id()) == 13) {
-                        TLorentzVector L3muon_j_4mom(0., 0., 0., 0.);
-                        L3muon_j_4mom.SetPtEtaPhiM(obj_j.pt(), obj_j.eta(), obj_j.phi(), obj_j.mass());
-                    }
-                }
-            }
+      if (abs(obj.id()) == 13) {
+        TLorentzVector L3muon_4mom(0., 0., 0., 0.);
+        L3muon_4mom.SetPtEtaPhiM(obj.pt(), obj.eta(), obj.phi(), obj.mass());
+        new((*L3_particle_4mom)[nL3]) TLorentzVector(L3muon_4mom);
+        L3_particle_id[nL3] = obj.id();
+        nL3++;
+        for (trigger::size_type j = n0+1; j != n1; ++j) {
+          const trigger::TriggerObject& obj_j( trigEvent->getObjects().at(j) );
+          if (abs(obj_j.id()) == 13) {
+            TLorentzVector L3muon_j_4mom(0., 0., 0., 0.);
+            L3muon_j_4mom.SetPtEtaPhiM(obj_j.pt(), obj_j.eta(), obj_j.phi(), obj_j.mass());
+          }
         }
+      }
     }
+  }
 }
 
 void MuonAnalyzer::fillRAWTrigger(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
 
-//  InputTag L3NameCollection("hltL3MuonCandidates", "", "HLT");
+  //  InputTag L3NameCollection("hltL3MuonCandidates", "", "HLT");
   InputTag L3NameCollection("hltL3MuonCandidates", "", HLTString_.c_str());
 
   Handle<reco::RecoChargedCandidateCollection> mucands;
@@ -529,7 +787,7 @@ void MuonAnalyzer::fillRAWTrigger(const edm::Event& iEvent, const edm::EventSetu
 
   if (!mucands.isValid()) return;
 
-        //get the transient track builder:
+  //get the transient track builder:
   edm::ESHandle<TransientTrackBuilder> theB;
   iSetup.get<TransientTrackRecord>().get("TransientTrackBuilder",theB);
 
@@ -549,7 +807,7 @@ void MuonAnalyzer::fillRAWTrigger(const edm::Event& iEvent, const edm::EventSetu
       TrackRef tk2 = cand2->get<TrackRef>();
       if (cand1->charge()*cand2->charge()>0) continue;
 
-    // Combined dimuon system
+      // Combined dimuon system
       e1 = sqrt(cand1->momentum().Mag2()+MuMass2);
       e2 = sqrt(cand2->momentum().Mag2()+MuMass2);
       p1 = Particle::LorentzVector(cand1->px(),cand1->py(),cand1->pz(),e1);
@@ -568,7 +826,7 @@ void MuonAnalyzer::fillRAWTrigger(const edm::Event& iEvent, const edm::EventSetu
       if (!tv.isValid()) continue;
 
       Vertex vertex = tv;
-//      cout << vertex.x() << " " << vertex.y() << " " << vertex.z() << endl;
+      //      cout << vertex.x() << " " << vertex.y() << " " << vertex.z() << endl;
       // put vertex in the event
       vertexCollection->push_back(vertex);
     }
@@ -576,16 +834,16 @@ void MuonAnalyzer::fillRAWTrigger(const edm::Event& iEvent, const edm::EventSetu
 
   // get beam spot
   reco::BeamSpot vertexBeamSpot;
-  edm::Handle<reco::BeamSpot> recoBeamSpotHandle;
-  iEvent.getByLabel("hltOnlineBeamSpot",recoBeamSpotHandle);
-  vertexBeamSpot = *recoBeamSpotHandle;
+  edm::Handle<reco::BeamSpot> onlineBeamSpotHande;
+  iEvent.getByLabel("hltOnlineBeamSpot",onlineBeamSpotHande);
+  vertexBeamSpot = *onlineBeamSpotHande;
 
 
   for(reco::VertexCollection::iterator it = vertexCollection->begin(); it!= vertexCollection->end(); it++) {
     reco::Vertex displacedVertex = *it;
-    if( (displacedVertex.chi2()>=0.0) && (displacedVertex.ndof()>0) ) vtxProb[nvtx] = TMath::Prob(displacedVertex.chi2(), displacedVertex.ndof() );
+    if( (displacedVertex.chi2()>=0.0) && (displacedVertex.ndof()>0) ) vtxProb[nsv_hlt] = TMath::Prob(displacedVertex.chi2(), displacedVertex.ndof() );
 
-    normChi2[nvtx] = displacedVertex.normalizedChi2();
+    normChi2[nsv_hlt] = displacedVertex.normalizedChi2();
 
     // get the two muons from the vertex
     reco::Vertex::trackRef_iterator trackIt = displacedVertex.tracks_begin();
@@ -612,7 +870,7 @@ void MuonAnalyzer::fillRAWTrigger(const edm::Event& iEvent, const edm::EventSetu
     cand2_4mom.SetPtEtaPhiM(cand2->pt(), cand2->eta(), cand2->phi(), muon_mass);
     TLorentzVector vtx_4mom(0., 0., 0., 0.);
     vtx_4mom = cand1_4mom + cand2_4mom;
-    new((*raw_vtx_4mom)[nvtx]) TLorentzVector(vtx_4mom);
+    new((*hlt_vtx_4mom)[nsv_hlt]) TLorentzVector(vtx_4mom);
 
     // calculate two-track transverse momentum
     math::XYZVector pperp(cand1->px() + cand2->px(),
@@ -631,16 +889,16 @@ void MuonAnalyzer::fillRAWTrigger(const edm::Event& iEvent, const edm::EventSetu
     GlobalPoint displacementFromBeamspot( -1*((vertexBeamSpot.x0() - secondaryVertex.x()) + (secondaryVertex.z() - vertexBeamSpot.z0()) * vertexBeamSpot.dxdz()),
                                           -1*((vertexBeamSpot.y0() - secondaryVertex.y())+ (secondaryVertex.z() - vertexBeamSpot.z0()) * vertexBeamSpot.dydz()), 0);
 
-    Lxy[nvtx] = displacementFromBeamspot.perp();
-    Lxyerr[nvtx] = sqrt(err.rerr(displacementFromBeamspot));
-    LxySignificance[nvtx] = Lxy[nvtx]/Lxyerr[nvtx];
+    Lxy[nsv_hlt] = displacementFromBeamspot.perp();
+    Lxyerr[nsv_hlt] = sqrt(err.rerr(displacementFromBeamspot));
+    LxySignificance[nsv_hlt] = Lxy[nsv_hlt]/Lxyerr[nsv_hlt];
 
     //calculate the angle between the decay length and the mumu momentum
     reco::Vertex::Point vperp(displacementFromBeamspot.x(),displacementFromBeamspot.y(),0.);
 
-    cosAlpha[nvtx] = vperp.Dot(pperp)/(vperp.R()*pperp.R());
+    cosAlpha[nsv_hlt] = vperp.Dot(pperp)/(vperp.R()*pperp.R());
 
-    nvtx++;
+    nsv_hlt++;
   }
 }
 
@@ -649,46 +907,46 @@ bool MuonAnalyzer::IsTightMuon(const reco::Muon & muon) {
   if(!muon.isGlobalMuon() ) return false;
   bool muID = isGoodMuon(muon, muon::GlobalMuonPromptTight) && (muon.numberOfMatchedStations() > 1);
   bool hits = muon.innerTrack()->hitPattern().trackerLayersWithMeasurement() > 5 &&muon.innerTrack()->hitPattern().numberOfValidPixelHits() > 0;
- //  bool ip = fabs(muon.muonBestTrack()->dxy(vtx.position())) < 0.2 && fabs(muon.muonBestTrack()->dz(vtx.position())) < 0.5;
-   return muID && hits/* && ip*/;
+  //  bool ip = fabs(muon.muonBestTrack()->dxy(vtx.position())) < 0.2 && fabs(muon.muonBestTrack()->dz(vtx.position())) < 0.5;
+  return muID && hits/* && ip*/;
 }
 
 bool MuonAnalyzer::is_trigger_matched(const edm::Event& iEvent, const TLorentzVector mu) {
-	
-	
-//	EDGetTokenT<trigger::TriggerEvent>  trigEventToken;
-//	trigEventToken = consumes<trigger::TriggerEvent>(trigEventTag);
-//	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT"); //make sure have correct process on MC
+
+
+  //	EDGetTokenT<trigger::TriggerEvent>  trigEventToken;
+  //	trigEventToken = consumes<trigger::TriggerEvent>(trigEventTag);
+  //	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT"); //make sure have correct process on MC
   edm::InputTag trigEventTag("hltTriggerSummaryAOD","", HLTString_.c_str()); //make sure have correct process on MC
-	
-	Handle<trigger::TriggerEvent> trigEvent;
-//	iEvent.getByToken(trigEventToken, trigEvent);
-	iEvent.getByLabel(trigEventTag, trigEvent);
 
-	if (!trigEvent.isValid()) {
-		cout << "Trigger summary product not found! Collection returns false always";
-	  return false;
-	}
+  Handle<trigger::TriggerEvent> trigEvent;
+  //	iEvent.getByToken(trigEventToken, trigEvent);
+  iEvent.getByLabel(trigEventTag, trigEvent);
 
-	//std::string filterName("hltVertexmumuFilterBs47"); //hltVertexmumuFilterBs345
-	string L3NameCollection("hltL3MuonCandidates");
+  if (!trigEvent.isValid()) {
+    cout << "Trigger summary product not found! Collection returns false always";
+    return false;
+  }
 
-	trigger::size_type Index(0);
-	Index = trigEvent->collectionIndex(edm::InputTag(L3NameCollection, "", trigEventTag.process()));
-	if (Index < trigEvent->sizeCollections()) {
-		const trigger::Keys& Keys(trigEvent->collectionKeys());
-		const trigger::size_type n0 (Index == 0? 0 : Keys.at(Index-1));
-		const trigger::size_type n1 (Keys.at(Index));
-		for (trigger::size_type i = n0; i != n1; ++i) {
-			const trigger::TriggerObject& obj( trigEvent->getObjects().at(i) );
-			if (abs(obj.id()) == 13) {
-				TLorentzVector L3muon_4mom(0., 0., 0., 0.);
-				L3muon_4mom.SetPtEtaPhiM(obj.pt(), obj.eta(), obj.phi(), obj.mass());
-				if (mu.DeltaR(L3muon_4mom) < 0.1) return true;
-			}
-		}
-	}
-	return false;
+  //std::string filterName("hltVertexmumuFilterBs47"); //hltVertexmumuFilterBs345
+  string L3NameCollection("hltL3MuonCandidates");
+
+  trigger::size_type Index(0);
+  Index = trigEvent->collectionIndex(edm::InputTag(L3NameCollection, "", trigEventTag.process()));
+  if (Index < trigEvent->sizeCollections()) {
+    const trigger::Keys& Keys(trigEvent->collectionKeys());
+    const trigger::size_type n0 (Index == 0? 0 : Keys.at(Index-1));
+    const trigger::size_type n1 (Keys.at(Index));
+    for (trigger::size_type i = n0; i != n1; ++i) {
+      const trigger::TriggerObject& obj( trigEvent->getObjects().at(i) );
+      if (abs(obj.id()) == 13) {
+        TLorentzVector L3muon_4mom(0., 0., 0., 0.);
+        L3muon_4mom.SetPtEtaPhiM(obj.pt(), obj.eta(), obj.phi(), obj.mass());
+        if (mu.DeltaR(L3muon_4mom) < 0.1) return true;
+      }
+    }
+  }
+  return false;
 }
 
 // ------------ method called once each job just after ending the event loop  ------------
@@ -697,25 +955,25 @@ void MuonAnalyzer::endJob() {
 }
 
 // ------------ method called when starting to processes a run  ------------
-void 
+void
 MuonAnalyzer::beginRun(edm::Run const&, edm::EventSetup const&)
 {
 }
 
 // ------------ method called when ending the processing of a run  ------------
-void 
+void
 MuonAnalyzer::endRun(edm::Run const&, edm::EventSetup const&)
 {
 }
 
 // ------------ method called when starting to processes a luminosity block  ------------
-void 
+void
 MuonAnalyzer::beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&)
 {
 }
 
 // ------------ method called when ending the processing of a luminosity block  ------------
-void 
+void
 MuonAnalyzer::endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&)
 {
 }
@@ -728,6 +986,34 @@ MuonAnalyzer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.setUnknown();
   descriptions.addDefault(desc);
+}
+
+int MuonAnalyzer::findVertexId(const reco::Vertex & theOriginalPV,
+                               const std::vector<reco::Vertex > &priVtxs,
+                               const reco::Track & track, const double & maxDeltaR)
+{
+  // Check if the track belongs to the PV associated to the candidate
+  for(auto PVtk = theOriginalPV.tracks_begin(); PVtk != theOriginalPV.tracks_end(); ++PVtk) {
+    if( PVtk->isNonnull() ) {
+      if( PVtk->key() == track.extra().key() ) {
+        // if( deltaR(track.eta(), track.phi(), (*PVtk)->eta(), (*PVtk)->phi()) < maxDeltaR ) return 1;
+        return 1;
+      }
+    }
+  }
+  // Check if the track is associated to any other PV
+  for(auto itv = priVtxs.begin(), itvend = priVtxs.end(); itv != itvend; ++itv){
+    for( auto vtxTk = itv->tracks_begin(); vtxTk != itv->tracks_end(); ++vtxTk) {
+      if( vtxTk->isNonnull() ) {
+        if( vtxTk->key() == track.extra().key() ) {
+          return 2;
+        }
+        // if( deltaR(track.eta(), track.phi(), (*vtxTk)->eta(), (*vtxTk)->phi()) < maxDeltaR ) return 2;
+      }
+    }
+  }
+  // Track is not associated to any PV
+  return 0;
 }
 
 //define this as a plug-in

@@ -7,11 +7,15 @@
 <use name="FWCore/ServiceRegistry"/>
 <use name="DataFormats/HepMCCandidate"/>
 <use name="DataFormats/TrackReco"/>
+<use name="DataFormats/HLTReco"/>
 <use name="TrackingTools/TransientTrack"/>
 <use name="TrackingTools/Records"/>
 <use name="DataFormats/VertexReco"/>
 <use name="DataFormats/RecoCandidate"/>
 <use name="DataFormats/Candidate"/>
 <use name="RecoVertex/KalmanVertexFit"/>
+<use name="CommonTools/UtilAlgos"/>
+<use name="FWCore/Common"/>
+<use name="TrackingTools/IPTools"/>
+<use name="DataFormats/Math"/>
 <flags EDM_PLUGIN="1"/>
-
