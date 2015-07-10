@@ -22,6 +22,7 @@
 #include <memory>
 
 #include <math.h>
+#include <iterator>
 
 // user include files
 #include "FWCore/Framework/interface/Frameworkfwd.h"
@@ -166,7 +167,7 @@ private:
   InputTag onlineBS_;
   InputTag offlineBS_;
   InputTag PVs_;
-
+  InputTag GenParticle_;
 
   Int_t ngen;
   Int_t nsv_hlt;
@@ -206,6 +207,10 @@ private:
   bool isTriggerMatched[100];
   Double_t dimuon_iso[100];
 
+  Int_t mu1Index[100];
+  Int_t mu2Index[100];
+
+
 };
 
 //
@@ -236,6 +241,7 @@ MuonAnalyzer::MuonAnalyzer(const edm::ParameterSet& iConfig)
   onlineBS_     = iConfig.getParameter <InputTag> ("OnlineBeamSpot");
   offlineBS_    = iConfig.getParameter<InputTag>("OfflineBeamSpot");
   PVs_          = iConfig.getParameter <InputTag> ("PrimaryVertexCollection");
+  GenParticle_  = iConfig.getParameter <InputTag> ("GenParticleCollection");
 
   output_ = new TFile (outputname_.c_str(), "RECREATE" );
   tree_   = new TTree("tree","tree");
@@ -326,7 +332,7 @@ void MuonAnalyzer::fillReco(const edm::Event& iEvent, const edm::EventSetup& iSe
   }
 
 
-
+  // first muon
   MuonCollection::const_iterator muon_i;
   for (muon_i = muons->begin(); muon_i!=muons->end(); ++muon_i) { // loop over all muons
     if (nmuons >= 100) {
@@ -362,6 +368,7 @@ void MuonAnalyzer::fillReco(const edm::Event& iEvent, const edm::EventSetup& iSe
     isTightMuon[nmuons] = IsTightMuon(*mu);
     nmuons++;
 
+    // second muon and make jpsi
     MuonCollection::const_iterator muon_j;
     for (muon_j = muon_i+1; muon_j!=muons->end(); ++muon_j) { // loop over all muons
       const Muon * mu_j = &(*muon_j);
@@ -376,6 +383,13 @@ void MuonAnalyzer::fillReco(const edm::Event& iEvent, const edm::EventSetup& iSe
       dimuon_4mom = muon_4mom + muon_4mom_j;
       new((*reco_dimuon_4mom)[ndimuons]) TLorentzVector(dimuon_4mom);
       dicharge[ndimuons] = (*muon_i).charge() + (*muon_j).charge();
+
+      unsigned int index1 = std::distance( muons->begin(), muon_i);
+      unsigned int index2 = std::distance( muons->begin(), muon_j);
+      mu1Index[ndimuons] = -1;
+      mu2Index[ndimuons] = -1;
+      if (index1 < muons->size()) mu1Index[ndimuons] = index1;
+      if (index2 < muons->size()) mu2Index[ndimuons] = index2;
 
       // SV
       vector<TransientTrack> t_tks;
@@ -571,7 +585,7 @@ vector <int> MuonAnalyzer::is_MC_matched(const edm::Event& iEvent, const Muon * 
 
   edm::Handle<GenParticleCollection> genParticles;
   //	iEvent.getByToken(theGenLabel, genParticles);
-  iEvent.getByLabel(theGenLabel, genParticles);
+  iEvent.getByLabel(GenParticle_, genParticles);
 
   vector <int> family_tree(3, -1);
   for(size_t i = 0; i < genParticles->size(); ++i) {
@@ -635,6 +649,9 @@ void MuonAnalyzer::beginJob() {
     tree_->Branch("reco_muon_isTightMuon",   isTightMuon,      "isTightMuon[nmuons]/O");
     tree_->Branch("reco_dimuon_4mom",          "TClonesArray", &reco_dimuon_4mom, 32000, 0);
     tree_->Branch("reco_dimuon_iso",        dimuon_iso,        "reco_dimuon_iso[ndimuons]/D");
+    tree_->Branch("reco_dimuon_mu1Index", mu1Index, "reco_dimuon_mu1Index[ndimuons]/I");
+    tree_->Branch("reco_dimuon_mu2Index", mu2Index, "reco_dimuon_mu2Index[ndimuons]/I");
+
     tree_->Branch("npv", &npv, "npv/I");
 
     if (doMC_) {
@@ -685,7 +702,7 @@ void MuonAnalyzer::fillGen(const edm::Event& iEvent) {
   //	edm::InputTag trigEventTag("hltTriggerSummaryAOD","","HLT"); //make sure have correct process on MC
 
   //	iEvent.getByToken(theGenLabel, genParticles);
-  iEvent.getByLabel(theGenLabel, genParticles);
+  iEvent.getByLabel(GenParticle_, genParticles);
 
   for (vector<int>::iterator it = pdgId_.begin(); it != pdgId_.end(); ++it) {
     int pdgId_i = *it;
@@ -729,7 +746,7 @@ void MuonAnalyzer::fillTriggerHLTpaths(const edm::Event& iEvent) {
       }
     }
   }
-  else cout << "hltresuts is not valid" << endl;
+  else cout << "hltresults is not valid" << endl;
 
 }
 
@@ -744,7 +761,7 @@ void MuonAnalyzer::fillTriggerL3(const edm::Event& iEvent, const edm::EventSetup
   iEvent.getByLabel(trigEventTag, trigEvent);
 
   if (!trigEvent.isValid()) {
-    cout << "Trigger summary product not found! Collection returns false always";
+    cout << "Trigger summary product not found! Collection returns false always" << endl;
     return;
   }
 
